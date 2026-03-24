@@ -422,8 +422,8 @@ impl App {
     }
 
     pub fn create_session(&mut self, name: &str, branch: &str, base_branch: &str) -> Result<()> {
-        // Create worktree
-        let worktree_path = match worktree::create_worktree(&self.repo_path, branch, base_branch) {
+        // Create worktree (uses session name as folder name)
+        let worktree_path = match worktree::create_worktree(&self.repo_path, branch, base_branch, name) {
             Ok(path) => path,
             Err(e) => {
                 self.show_dialog = Some(Dialog::Error(format!("Failed to create worktree: {}", e)));

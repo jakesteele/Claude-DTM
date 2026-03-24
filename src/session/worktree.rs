@@ -2,15 +2,42 @@ use anyhow::{Context, Result, bail};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Get the base directory for all worktrees: ~/claude-dtm-worktrees/<repo-name>/
+fn worktrees_base_dir(repo_path: &Path) -> PathBuf {
+    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+    let repo_name = repo_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "repo".to_string());
+    home.join("claude-dtm-worktrees").join(repo_name)
+}
+
+/// Sanitize a session name for use as a directory name
+fn sanitize_dir_name(name: &str) -> String {
+    name.chars()
+        .map(|c| match c {
+            '/' | '\\' | ' ' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+            c => c,
+        })
+        .collect()
+}
+
 pub fn create_worktree(
     repo_path: &Path,
     branch_name: &str,
     base_branch: &str,
+    session_name: &str,
 ) -> Result<PathBuf> {
-    let worktree_dir = repo_path.join(".worktrees").join(branch_name.replace('/', "_"));
+    let base_dir = worktrees_base_dir(repo_path);
+    std::fs::create_dir_all(&base_dir)?;
 
-    // Ensure .worktrees directory exists
-    std::fs::create_dir_all(repo_path.join(".worktrees"))?;
+    // Use session name for the folder, fall back to branch if empty
+    let dir_name = if session_name.trim().is_empty() {
+        sanitize_dir_name(branch_name)
+    } else {
+        sanitize_dir_name(session_name)
+    };
+    let worktree_dir = base_dir.join(&dir_name);
 
     let output = Command::new("git")
         .args(["worktree", "add", "-b", branch_name])
