@@ -45,47 +45,46 @@ pub fn render(frame: &mut ratatui::Frame, app: &App, screen_cache: &[Vec<Line<'s
     let n = app.sessions.len();
     if n == 0 {
         render_empty_state(frame.buffer_mut(), pane_area);
-        return;
-    }
-
-    let rects = tiling::tile(
-        pane_area,
-        n,
-        app.focused,
-        app.layout_mode,
-        app.master_count,
-        app.master_ratio,
-    );
-
-    for (i, (session, rect)) in app.sessions.iter().zip(rects.iter()).enumerate() {
-        if rect.width == 0 || rect.height == 0 {
-            continue;
-        }
-
-        let is_focused = i == app.focused;
-        let is_entered = is_focused && app.input_mode == InputMode::PaneFocused;
-
-        let lines = if i < screen_cache.len() {
-            &screen_cache[i]
-        } else {
-            continue;
-        };
-
-        pane::render_pane(
-            frame.buffer_mut(),
-            *rect,
-            lines,
-            &session.name,
-            session.status,
-            is_focused,
-            i,
-            is_entered,
+    } else {
+        let rects = tiling::tile(
+            pane_area,
+            n,
+            app.focused,
+            app.layout_mode,
+            app.master_count,
+            app.master_ratio,
         );
+
+        for (i, (session, rect)) in app.sessions.iter().zip(rects.iter()).enumerate() {
+            if rect.width == 0 || rect.height == 0 {
+                continue;
+            }
+
+            let is_focused = i == app.focused;
+            let is_entered = is_focused && app.input_mode == InputMode::PaneFocused;
+
+            let lines = if i < screen_cache.len() {
+                &screen_cache[i]
+            } else {
+                continue;
+            };
+
+            pane::render_pane(
+                frame.buffer_mut(),
+                *rect,
+                lines,
+                &session.name,
+                session.status,
+                is_focused,
+                i,
+                is_entered,
+            );
+        }
     }
 
-    // Render dialog on top if present
+    // Render dialog on top if present (always, even with 0 sessions)
     if let Some(ref dialog) = app.show_dialog {
-        dialog::render_dialog(frame.buffer_mut(), area, dialog);
+        dialog::render_dialog(frame.buffer_mut(), area, dialog, app);
     }
 }
 
@@ -174,6 +173,10 @@ fn render_legend(buf: &mut Buffer, area: Rect, mode: InputMode) {
                 Span::styled(":new ", Style::default().fg(Color::DarkGray)),
                 Span::styled("f", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
                 Span::styled(":enter ", Style::default().fg(Color::DarkGray)),
+                Span::styled("s", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled(":search ", Style::default().fg(Color::DarkGray)),
+                Span::styled("z", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled(":promote ", Style::default().fg(Color::DarkGray)),
                 Span::styled("q", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
                 Span::styled(":kill ", Style::default().fg(Color::DarkGray)),
                 Span::styled("p", Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)),

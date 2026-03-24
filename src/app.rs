@@ -19,6 +19,11 @@ pub enum Dialog {
         /// 0 = name, 1 = branch, 2 = base branch
         field_focus: usize,
     },
+    SearchSession {
+        query: String,
+        /// Index of the highlighted match in the filtered results
+        selected: usize,
+    },
     ConfirmKill {
         session_idx: usize,
         delete_branch: bool,
@@ -179,6 +184,25 @@ impl App {
                 self.input_mode = InputMode::Normal;
                 self.show_dialog = None;
             }
+            Action::SearchSession => {
+                if !self.sessions.is_empty() {
+                    self.show_dialog = Some(Dialog::SearchSession {
+                        query: String::new(),
+                        selected: 0,
+                    });
+                    self.input_mode = InputMode::Dialog;
+                }
+            }
+            Action::ToggleZoom => {
+                if self.sessions.len() > 1 {
+                    // Promote focused to master and switch to master-stack layout
+                    if self.focused != 0 {
+                        self.sessions.swap(0, self.focused);
+                        self.focused = 0;
+                    }
+                    self.layout_mode = LayoutMode::MasterStack;
+                }
+            }
             Action::FocusPane(idx) => {
                 if idx < self.sessions.len() {
                     self.focused = idx;
@@ -208,6 +232,12 @@ impl App {
             Action::DialogBackspace => {
                 self.handle_dialog_backspace();
             }
+            Action::DialogUp => {
+                self.handle_dialog_up();
+            }
+            Action::DialogDown => {
+                self.handle_dialog_down();
+            }
             Action::PassThrough(key) => {
                 self.handle_passthrough(key)?;
             }
@@ -227,6 +257,28 @@ impl App {
                 ..
             }) => {
                 self.create_session(&name_input, &branch_input, &base_branch_input)?;
+            }
+            Some(Dialog::SearchSession { query, selected }) => {
+                // Find matching sessions and focus the selected one
+                let matches: Vec<usize> = self
+                    .sessions
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, s)| {
+                        if query.is_empty() {
+                            true
+                        } else {
+                            let q = query.to_lowercase();
+                            s.name.to_lowercase().contains(&q)
+                                || s.branch.to_lowercase().contains(&q)
+                        }
+                    })
+                    .map(|(i, _)| i)
+                    .collect();
+
+                if let Some(&idx) = matches.get(selected) {
+                    self.focused = idx;
+                }
             }
             Some(Dialog::ConfirmKill {
                 session_idx,
@@ -266,6 +318,13 @@ impl App {
                 1 => branch_input.push(c),
                 _ => base_branch_input.push(c),
             }
+        } else if let Some(Dialog::SearchSession {
+            ref mut query,
+            ref mut selected,
+        }) = self.show_dialog
+        {
+            query.push(c);
+            *selected = 0; // reset selection when query changes
         } else if let Some(Dialog::ConfirmKill {
             ref mut delete_branch,
             ..
@@ -289,6 +348,48 @@ impl App {
                 0 => { name_input.pop(); }
                 1 => { branch_input.pop(); }
                 _ => { base_branch_input.pop(); }
+            }
+        } else if let Some(Dialog::SearchSession {
+            ref mut query,
+            ref mut selected,
+        }) = self.show_dialog
+        {
+            query.pop();
+            *selected = 0;
+        }
+    }
+
+    fn handle_dialog_up(&mut self) {
+        if let Some(Dialog::SearchSession {
+            ref mut selected, ..
+        }) = self.show_dialog
+        {
+            *selected = selected.saturating_sub(1);
+        }
+    }
+
+    fn handle_dialog_down(&mut self) {
+        if let Some(Dialog::SearchSession {
+            ref query,
+            ref mut selected,
+        }) = self.show_dialog
+        {
+            let match_count = self
+                .sessions
+                .iter()
+                .filter(|s| {
+                    if query.is_empty() {
+                        true
+                    } else {
+                        let q = query.to_lowercase();
+                        s.name.to_lowercase().contains(&q)
+                            || s.branch.to_lowercase().contains(&q)
+                    }
+                })
+                .count();
+
+            if match_count > 0 {
+                *selected = (*selected + 1).min(match_count - 1);
             }
         }
     }

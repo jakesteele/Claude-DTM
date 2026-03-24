@@ -4,13 +4,18 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap};
 
-use crate::app::Dialog;
+use crate::app::{App, Dialog};
 
-pub fn render_dialog(buf: &mut Buffer, area: Rect, dialog: &Dialog) {
+pub fn render_dialog(buf: &mut Buffer, area: Rect, dialog: &Dialog, app: &App) {
     // Calculate centered dialog rect
     let width = (area.width * 60 / 100).min(60).max(30);
     let height = match dialog {
         Dialog::NewSession { .. } => 14,
+        Dialog::SearchSession { .. } => {
+            // Dynamic height: 5 base + up to 8 result rows
+            let n = app.sessions.len().min(8);
+            (5 + n as u16).max(7)
+        }
         Dialog::ConfirmKill { .. } => 7,
         Dialog::ConfirmQuit => 5,
         Dialog::Error(_) => 7,
@@ -38,6 +43,9 @@ pub fn render_dialog(buf: &mut Buffer, area: Rect, dialog: &Dialog) {
                 base_branch_input,
                 *field_focus,
             );
+        }
+        Dialog::SearchSession { query, selected } => {
+            render_search_dialog(buf, dialog_area, query, *selected, app);
         }
         Dialog::ConfirmKill {
             session_idx,
@@ -216,5 +224,97 @@ fn render_error_dialog(buf: &mut Buffer, area: Rect, msg: &str) {
     ];
 
     let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
+    paragraph.render(inner, buf);
+}
+
+fn render_search_dialog(
+    buf: &mut Buffer,
+    area: Rect,
+    query: &str,
+    selected: usize,
+    app: &App,
+) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Cyan))
+        .title(Line::from(Span::styled(
+            " Search Sessions ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )));
+
+    let inner = block.inner(area);
+    block.render(area, buf);
+
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Search input field
+    lines.push(Line::from(vec![
+        Span::styled(" 🔍 ", Style::default().fg(Color::Yellow)),
+        Span::styled(
+            format!("{}_", query),
+            Style::default().fg(Color::Yellow),
+        ),
+    ]));
+    lines.push(Line::from(""));
+
+    // Filter sessions
+    let q = query.to_lowercase();
+    let matches: Vec<(usize, &crate::session::Session)> = app
+        .sessions
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| {
+            if query.is_empty() {
+                true
+            } else {
+                s.name.to_lowercase().contains(&q)
+                    || s.branch.to_lowercase().contains(&q)
+            }
+        })
+        .collect();
+
+    if matches.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "  No matching sessions",
+            Style::default().fg(Color::DarkGray),
+        )));
+    } else {
+        for (match_idx, (pane_idx, session)) in matches.iter().enumerate() {
+            let is_selected = match_idx == selected;
+            let prefix = if is_selected { " ▸ " } else { "   " };
+            let status_color = crate::ui::pane::status_color(session.status);
+
+            let style = if is_selected {
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            };
+
+            lines.push(Line::from(vec![
+                Span::styled(prefix, style),
+                Span::styled(
+                    format!("[{}] ", pane_idx + 1),
+                    Style::default().fg(status_color),
+                ),
+                Span::styled(&session.name, style),
+                Span::styled(
+                    format!("  {}", session.status.label()),
+                    Style::default().fg(status_color),
+                ),
+            ]));
+        }
+    }
+
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        "↑/↓: select | Enter: focus | Esc: cancel",
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    let paragraph = Paragraph::new(lines);
     paragraph.render(inner, buf);
 }
