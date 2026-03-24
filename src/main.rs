@@ -11,7 +11,7 @@ use anyhow::Result;
 use app::App;
 use clap::Parser;
 use config::Config;
-use crossterm::event::{self, Event, KeyEventKind};
+use crossterm::event::{self, EnableBracketedPaste, DisableBracketedPaste, Event, KeyEventKind};
 use crossterm::execute;
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::backend::CrosstermBackend;
@@ -78,7 +78,7 @@ fn main() -> Result<()> {
     // Setup terminal
     terminal::enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableBracketedPaste)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
@@ -87,7 +87,7 @@ fn main() -> Result<()> {
 
     // Restore terminal
     terminal::disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(terminal.backend_mut(), DisableBracketedPaste, LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
     if let Err(ref e) = result {
@@ -144,12 +144,28 @@ fn run_event_loop(
         app.update_statuses();
 
         if event::poll(tick_rate)? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    if let Some(action) = keys::map_key(key, app.input_mode) {
-                        app.handle_action(action)?;
+            match event::read()? {
+                Event::Key(key) => {
+                    if key.kind == KeyEventKind::Press {
+                        if let Some(action) = keys::map_key(key, app.input_mode) {
+                            app.handle_action(action)?;
+                        }
                     }
                 }
+                Event::Paste(text) => {
+                    // Send entire paste as a block to the focused PTY
+                    if app.input_mode == keys::InputMode::PaneFocused {
+                        if let Some(session) = app.sessions.get_mut(app.focused) {
+                            // Wrap in bracketed paste escape sequences for the child
+                            let mut data = Vec::new();
+                            data.extend_from_slice(b"\x1b[200~");
+                            data.extend_from_slice(text.as_bytes());
+                            data.extend_from_slice(b"\x1b[201~");
+                            let _ = session.write_input(&data);
+                        }
+                    }
+                }
+                _ => {}
             }
         }
 
