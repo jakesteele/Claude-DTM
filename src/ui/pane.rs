@@ -152,7 +152,7 @@ pub fn render_pane(
     let border_color = if is_entered {
         Color::Green
     } else if is_focused {
-        Color::Green
+        Color::White
     } else {
         status_color(status)
     };
