@@ -97,13 +97,13 @@ fn render_header(buf: &mut Buffer, area: Rect) {
     // Futuristic gradient-like title
     let logo_spans = vec![
         Span::styled(
-            " ◆ DWM",
+            " ◆ CLAUDE",
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
-            "-CLAUDE",
+            "-DTM",
             Style::default()
                 .fg(Color::LightCyan)
                 .add_modifier(Modifier::BOLD),

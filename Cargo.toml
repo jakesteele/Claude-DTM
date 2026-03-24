@@ -1,10 +1,10 @@
 [package]
-name = "dwm-claude"
+name = "claude-dtm"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "dwm-claude"
+name = "claude-dtm"
 path = "src/main.rs"
 
 [dependencies]

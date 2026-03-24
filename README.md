@@ -1,10 +1,10 @@
-# DWM-Claude
+# Claude-DTM
 
-A DWM-inspired tiling terminal manager for running multiple [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions simultaneously. Each session runs in its own git worktree, displayed in a keyboard-driven tiling layout.
+A dynamic tiling terminal manager for running multiple [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions simultaneously. Each session runs in its own git worktree, displayed in a keyboard-driven tiling layout.
 
-Think **"tmux meets DWM, purpose-built for Claude Code."**
+Think **"tmux meets dwm, purpose-built for Claude Code."**
 
-![DWM-Claude running in Ghostty](assets/screenshot.png)
+![Claude-DTM running in Ghostty](assets/screenshot.png)
 
 ## Features
 
@@ -14,7 +14,8 @@ Think **"tmux meets DWM, purpose-built for Claude Code."**
 - **Status detection** — Auto-detects if Claude is running, waiting for input, or done
 - **Color-coded borders** — Yellow (running), green (waiting), grey (done), blue (paused)
 - **Session persistence** — Sessions save on exit and can be resumed on restart
-- **Keyboard-only** — No mouse needed, DWM-style keybindings
+- **Search sessions** — Fuzzy-find sessions by name or branch with `s`
+- **Keyboard-only** — No mouse needed, dwm-style keybindings
 - **Futuristic TUI** — Built with `ratatui`, includes key legend and statusbar
 
 ## Install
@@ -22,11 +23,12 @@ Think **"tmux meets DWM, purpose-built for Claude Code."**
 ### From source (requires Rust)
 
 ```bash
-git clone https://github.com/jakesteele/Claude-DWM.git
-cd Claude-DWM
-cargo build --release
-sudo cp target/release/dwm-claude /usr/local/bin/
+git clone https://github.com/jakesteele/Claude-DTM.git
+cd Claude-DTM
+cargo install --path .
 ```
+
+This installs `claude-dtm` to `~/.cargo/bin/` (already in your PATH if Rust is set up).
 
 ### Prerequisites
 
@@ -39,20 +41,20 @@ sudo cp target/release/dwm-claude /usr/local/bin/
 ```bash
 # Run from inside any git repository (uses current directory)
 cd ~/your-project
-dwm-claude
+claude-dtm
 
 # Specify a repo and base branch explicitly
-dwm-claude --repo ~/your-project --base-branch develop
+claude-dtm --repo ~/your-project --base-branch develop
 
 # Use a custom command instead of claude
-dwm-claude --command "claude --dangerously-skip-permissions"
+claude-dtm --command "claude --dangerously-skip-permissions"
 ```
 
 ### Quick Start
 
 1. `cd` into a git repository
-2. Run `dwm-claude`
-3. Press `n` to create a new session (enter a branch name or accept the default)
+2. Run `claude-dtm`
+3. Press `n` to create a new session (name it, set branch, confirm)
 4. Press `f` to enter the pane and interact with Claude
 5. Press `Esc` to go back to navigation mode
 6. Press `n` again to spawn more sessions
@@ -85,6 +87,8 @@ dwm-claude --command "claude --dangerously-skip-permissions"
 |-----|--------|
 | `n` | New session (creates worktree + spawns Claude) |
 | `f` | Enter focused pane (send keystrokes to Claude) |
+| `s` | Search sessions by name/branch |
+| `z` | Promote focused session to master position |
 | `Esc` | Exit pane / close dialog |
 | `q` | Kill focused session (removes worktree) |
 | `p` | Pause focused session |
@@ -125,7 +129,7 @@ dwm-claude --command "claude --dangerously-skip-permissions"
 
 ## Configuration
 
-Config is stored at `~/.config/dwm-claude/config.json`. Created automatically with defaults on first run.
+Config is stored at `~/.config/claude-dtm/config.json`. Created automatically with defaults on first run.
 
 ```json
 {
@@ -152,7 +156,7 @@ Config is stored at `~/.config/dwm-claude/config.json`. Created automatically wi
 2. **PTY** — Claude Code is spawned in a pseudo-terminal via `portable-pty`, giving it a real terminal environment
 3. **Terminal parsing** — PTY output is parsed through `vt100` to capture colors, cursor position, and formatting
 4. **Rendering** — The parsed terminal state is converted to `ratatui` spans and rendered in tiled panes
-5. **Async I/O** — `tokio` multiplexes reads from all PTYs concurrently for responsive updates
+5. **Threaded I/O** — Each PTY reader runs on its own thread for responsive updates
 
 ## Tech Stack
 
@@ -162,7 +166,6 @@ Config is stored at `~/.config/dwm-claude/config.json`. Created automatically wi
 | PTY management | `portable-pty` |
 | Terminal parsing | `vt100` |
 | Git operations | Shell out to `git` |
-| Async runtime | `tokio` |
 | Config/state | `serde` + `serde_json` |
 | CLI args | `clap` |
 

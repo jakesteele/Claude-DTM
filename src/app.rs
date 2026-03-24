@@ -134,7 +134,7 @@ impl App {
                 let timestamp = Utc::now().format("%Y%m%d-%H%M%S");
                 self.show_dialog = Some(Dialog::NewSession {
                     name_input: String::new(),
-                    branch_input: format!("dwm-claude/{}", timestamp),
+                    branch_input: format!("claude-dtm/{}", timestamp),
                     base_branch_input: self.config.default_base_branch.clone(),
                     field_focus: 0,
                 });

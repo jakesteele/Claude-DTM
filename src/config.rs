@@ -104,7 +104,7 @@ impl Config {
     pub fn config_dir() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("~/.config"))
-            .join("dwm-claude")
+            .join("claude-dtm")
     }
 
     pub fn config_path() -> PathBuf {

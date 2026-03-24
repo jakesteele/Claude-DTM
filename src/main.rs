@@ -21,8 +21,8 @@ use std::time::Duration;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "dwm-claude",
-    about = "DWM-style tiling manager for Claude Code sessions"
+    name = "claude-dtm",
+    about = "Claude-DTM: Dynamic Tiling Manager for Claude Code sessions"
 )]
 struct Cli {
     /// Path to the git repository
