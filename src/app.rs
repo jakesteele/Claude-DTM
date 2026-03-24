@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Instant;
 
 use crate::config::Config;
@@ -23,6 +24,10 @@ pub enum Dialog {
         clean_worktree: bool,
     },
     ConfirmQuit,
+    Working {
+        message: String,
+        started: Instant,
+    },
     Error(String),
 }
 
@@ -37,6 +42,8 @@ pub struct App {
     pub show_dialog: Option<Dialog>,
     pub input_mode: InputMode,
     pub should_quit: bool,
+    /// Result message from a background task (cleanup, etc.)
+    pub bg_result: Arc<StdMutex<Option<String>>>,
     pub last_tick: Instant,
 }
 
@@ -59,6 +66,7 @@ impl App {
             show_dialog: None,
             input_mode: InputMode::Normal,
             should_quit: false,
+            bg_result: Arc::new(StdMutex::new(None)),
             last_tick: Instant::now(),
         }
     }
@@ -198,19 +206,60 @@ impl App {
                 }
             }
             Action::CleanupWorktrees => {
-                match self.cleanup_orphaned_worktrees() {
-                    Ok(0) => {
-                        self.show_dialog = Some(Dialog::Error("No orphaned worktrees found.".to_string()));
-                        self.input_mode = InputMode::Dialog;
-                    }
-                    Ok(n) => {
-                        self.show_dialog = Some(Dialog::Error(format!("Cleaned up {} orphaned worktree(s).", n)));
-                        self.input_mode = InputMode::Dialog;
-                    }
-                    Err(e) => {
-                        self.show_dialog = Some(Dialog::Error(format!("Cleanup failed: {}", e)));
-                        self.input_mode = InputMode::Dialog;
-                    }
+                // Count orphans first (fast, just reads dir)
+                let worktrees_dir = self.repo_path.join(".claude").join("worktrees");
+                let active_names: std::collections::HashSet<String> =
+                    self.sessions.iter().map(|s| s.name.clone()).collect();
+                let orphan_count = std::fs::read_dir(&worktrees_dir)
+                    .map(|entries| {
+                        entries
+                            .flatten()
+                            .filter(|e| !active_names.contains(&e.file_name().to_string_lossy().to_string()) && e.path().is_dir())
+                            .count()
+                    })
+                    .unwrap_or(0);
+
+                if orphan_count == 0 {
+                    self.show_dialog = Some(Dialog::Error("No orphaned worktrees found.".to_string()));
+                    self.input_mode = InputMode::Dialog;
+                } else {
+                    self.show_dialog = Some(Dialog::Working {
+                        message: format!("Cleaning up {} orphaned worktree(s)...", orphan_count),
+                        started: Instant::now(),
+                    });
+                    self.input_mode = InputMode::Dialog;
+
+                    let repo_path = self.repo_path.clone();
+                    let bg_result = self.bg_result.clone();
+                    let active = active_names.clone();
+                    std::thread::spawn(move || {
+                        let worktrees_dir = repo_path.join(".claude").join("worktrees");
+                        let mut cleaned = 0usize;
+                        if let Ok(entries) = std::fs::read_dir(&worktrees_dir) {
+                            for entry in entries.flatten() {
+                                let dir_name = entry.file_name().to_string_lossy().to_string();
+                                if !active.contains(&dir_name) && entry.path().is_dir() {
+                                    let wt_path = worktrees_dir.join(&dir_name);
+                                    let result = std::process::Command::new("git")
+                                        .args(["worktree", "remove", "--force"])
+                                        .arg(&wt_path)
+                                        .current_dir(&repo_path)
+                                        .output();
+                                    if result.is_err() || !result.as_ref().unwrap().status.success() {
+                                        let _ = std::fs::remove_dir_all(&wt_path);
+                                        let _ = std::process::Command::new("git")
+                                            .args(["worktree", "prune"])
+                                            .current_dir(&repo_path)
+                                            .output();
+                                    }
+                                    cleaned += 1;
+                                }
+                            }
+                        }
+                        if let Ok(mut r) = bg_result.lock() {
+                            *r = Some(format!("Cleaned up {} worktree(s)", cleaned));
+                        }
+                    });
                 }
             }
             Action::Quit => {
@@ -225,11 +274,16 @@ impl App {
                 }
             }
             Action::DialogConfirm => {
-                self.handle_dialog_confirm()?;
+                // Ignore confirm/cancel while Working dialog is active
+                if !matches!(self.show_dialog, Some(Dialog::Working { .. })) {
+                    self.handle_dialog_confirm()?;
+                }
             }
             Action::DialogCancel => {
-                self.show_dialog = None;
-                self.input_mode = InputMode::Normal;
+                if !matches!(self.show_dialog, Some(Dialog::Working { .. })) {
+                    self.show_dialog = None;
+                    self.input_mode = InputMode::Normal;
+                }
             }
             Action::DialogInput(c) => {
                 self.handle_dialog_input(c);
@@ -285,6 +339,7 @@ impl App {
                 self.shutdown()?;
                 self.should_quit = true;
             }
+            Some(Dialog::Working { .. }) => {}
             Some(Dialog::Error(_)) => {}
             None => {}
         }
@@ -426,14 +481,44 @@ impl App {
         let mut session = session;
         let _ = session.kill();
 
-        if clean_worktree {
-            self.cleanup_worktree(&session_name);
-        }
-
         if !self.sessions.is_empty() {
             self.focused = self.focused.min(self.sessions.len() - 1);
         } else {
             self.focused = 0;
+        }
+
+        if clean_worktree {
+            // Show spinner and run cleanup in background
+            self.show_dialog = Some(Dialog::Working {
+                message: format!("Cleaning up worktree \"{}\"...", session_name),
+                started: Instant::now(),
+            });
+            self.input_mode = InputMode::Dialog;
+
+            let repo_path = self.repo_path.clone();
+            let bg_result = self.bg_result.clone();
+            let name = session_name.clone();
+            std::thread::spawn(move || {
+                let worktree_path = repo_path.join(".claude").join("worktrees").join(&name);
+                if worktree_path.exists() {
+                    let result = std::process::Command::new("git")
+                        .args(["worktree", "remove", "--force"])
+                        .arg(&worktree_path)
+                        .current_dir(&repo_path)
+                        .output();
+
+                    if result.is_err() || !result.as_ref().unwrap().status.success() {
+                        let _ = std::fs::remove_dir_all(&worktree_path);
+                        let _ = std::process::Command::new("git")
+                            .args(["worktree", "prune"])
+                            .current_dir(&repo_path)
+                            .output();
+                    }
+                }
+                if let Ok(mut r) = bg_result.lock() {
+                    *r = Some(format!("Cleaned up \"{}\"", name));
+                }
+            });
         }
 
         Ok(())

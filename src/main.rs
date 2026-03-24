@@ -143,6 +143,15 @@ fn run_event_loop(
 
         app.update_statuses();
 
+        // Check if background task finished
+        {
+            let mut bg = app.bg_result.lock().unwrap();
+            if let Some(msg) = bg.take() {
+                app.show_dialog = Some(app::Dialog::Error(msg));
+                app.input_mode = keys::InputMode::Dialog;
+            }
+        }
+
         if event::poll(tick_rate)? {
             match event::read()? {
                 Event::Key(key) => {

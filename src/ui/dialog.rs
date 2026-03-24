@@ -15,6 +15,7 @@ pub fn render_dialog(buf: &mut Buffer, area: Rect, dialog: &Dialog, app: &App) {
             (5 + n as u16).max(7)
         }
         Dialog::ConfirmKill { .. } => 7,
+        Dialog::Working { .. } => 5,
         Dialog::ConfirmQuit => 5,
         Dialog::Error(_) => 7,
     };
@@ -34,6 +35,9 @@ pub fn render_dialog(buf: &mut Buffer, area: Rect, dialog: &Dialog, app: &App) {
         }
         Dialog::ConfirmKill { session_idx, clean_worktree } => {
             render_confirm_kill_dialog(buf, dialog_area, *session_idx, *clean_worktree, app);
+        }
+        Dialog::Working { message, started } => {
+            render_working_dialog(buf, dialog_area, message, *started);
         }
         Dialog::ConfirmQuit => {
             render_confirm_quit_dialog(buf, dialog_area);
@@ -271,6 +275,44 @@ fn render_search_dialog(
         "Up/Down: select | Enter: focus | Esc: cancel",
         Style::default().fg(Color::DarkGray),
     )));
+
+    let paragraph = Paragraph::new(lines);
+    paragraph.render(inner, buf);
+}
+
+fn render_working_dialog(buf: &mut Buffer, area: Rect, message: &str, started: std::time::Instant) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow))
+        .title(Line::from(Span::styled(
+            " Working ",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )));
+
+    let inner = block.inner(area);
+    block.render(area, buf);
+
+    let spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+    let elapsed = started.elapsed().as_millis() as usize;
+    let frame_idx = (elapsed / 80) % spinner_frames.len();
+    let spinner = spinner_frames[frame_idx];
+
+    let lines = vec![
+        Line::from(vec![
+            Span::styled(
+                format!(" {} ", spinner),
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(message, Style::default().fg(Color::White)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled(
+            "Please wait...",
+            Style::default().fg(Color::DarkGray),
+        )),
+    ];
 
     let paragraph = Paragraph::new(lines);
     paragraph.render(inner, buf);
