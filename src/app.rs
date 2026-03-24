@@ -20,6 +20,7 @@ pub enum Dialog {
     },
     ConfirmKill {
         session_idx: usize,
+        clean_worktree: bool,
     },
     ConfirmQuit,
     Error(String),
@@ -133,6 +134,7 @@ impl App {
                 if !self.sessions.is_empty() {
                     self.show_dialog = Some(Dialog::ConfirmKill {
                         session_idx: self.focused,
+                        clean_worktree: true,
                     });
                     self.input_mode = InputMode::Dialog;
                 }
@@ -193,6 +195,22 @@ impl App {
             Action::FocusPane(idx) => {
                 if idx < self.sessions.len() {
                     self.focused = idx;
+                }
+            }
+            Action::CleanupWorktrees => {
+                match self.cleanup_orphaned_worktrees() {
+                    Ok(0) => {
+                        self.show_dialog = Some(Dialog::Error("No orphaned worktrees found.".to_string()));
+                        self.input_mode = InputMode::Dialog;
+                    }
+                    Ok(n) => {
+                        self.show_dialog = Some(Dialog::Error(format!("Cleaned up {} orphaned worktree(s).", n)));
+                        self.input_mode = InputMode::Dialog;
+                    }
+                    Err(e) => {
+                        self.show_dialog = Some(Dialog::Error(format!("Cleanup failed: {}", e)));
+                        self.input_mode = InputMode::Dialog;
+                    }
                 }
             }
             Action::Quit => {
@@ -260,8 +278,8 @@ impl App {
                     self.focused = idx;
                 }
             }
-            Some(Dialog::ConfirmKill { session_idx }) => {
-                self.kill_session(session_idx)?;
+            Some(Dialog::ConfirmKill { session_idx, clean_worktree }) => {
+                self.kill_session(session_idx, clean_worktree)?;
             }
             Some(Dialog::ConfirmQuit) => {
                 self.shutdown()?;
@@ -274,6 +292,15 @@ impl App {
     }
 
     fn handle_dialog_input(&mut self, c: char) {
+        if let Some(Dialog::ConfirmKill {
+            ref mut clean_worktree, ..
+        }) = self.show_dialog
+        {
+            if c == 'w' || c == 'W' {
+                *clean_worktree = !*clean_worktree;
+            }
+            return;
+        }
         if let Some(Dialog::NewSession {
             ref mut name_input,
         }) = self.show_dialog
@@ -389,13 +416,19 @@ impl App {
         Ok(())
     }
 
-    pub fn kill_session(&mut self, idx: usize) -> Result<()> {
+    pub fn kill_session(&mut self, idx: usize, clean_worktree: bool) -> Result<()> {
         if idx >= self.sessions.len() {
             return Ok(());
         }
 
-        let mut session = self.sessions.remove(idx);
+        let session = self.sessions.remove(idx);
+        let session_name = session.name.clone();
+        let mut session = session;
         let _ = session.kill();
+
+        if clean_worktree {
+            self.cleanup_worktree(&session_name);
+        }
 
         if !self.sessions.is_empty() {
             self.focused = self.focused.min(self.sessions.len() - 1);
@@ -404,6 +437,53 @@ impl App {
         }
 
         Ok(())
+    }
+
+    /// Remove a worktree from disk via `git worktree remove`
+    fn cleanup_worktree(&self, name: &str) {
+        let worktree_path = self.repo_path.join(".claude").join("worktrees").join(name);
+        if worktree_path.exists() {
+            // Try git worktree remove first (proper cleanup)
+            let result = std::process::Command::new("git")
+                .args(["worktree", "remove", "--force"])
+                .arg(&worktree_path)
+                .current_dir(&self.repo_path)
+                .output();
+
+            if result.is_err() || !result.as_ref().unwrap().status.success() {
+                // Fallback: just remove the directory
+                let _ = std::fs::remove_dir_all(&worktree_path);
+                // Also prune stale worktree references
+                let _ = std::process::Command::new("git")
+                    .args(["worktree", "prune"])
+                    .current_dir(&self.repo_path)
+                    .output();
+            }
+        }
+    }
+
+    /// Clean up all orphaned worktrees (exist on disk but have no active session)
+    pub fn cleanup_orphaned_worktrees(&self) -> Result<usize> {
+        let worktrees_dir = self.repo_path.join(".claude").join("worktrees");
+        if !worktrees_dir.exists() {
+            return Ok(0);
+        }
+
+        let active_names: std::collections::HashSet<String> =
+            self.sessions.iter().map(|s| s.name.clone()).collect();
+
+        let mut cleaned = 0;
+        if let Ok(entries) = std::fs::read_dir(&worktrees_dir) {
+            for entry in entries.flatten() {
+                let dir_name = entry.file_name().to_string_lossy().to_string();
+                if !active_names.contains(&dir_name) && entry.path().is_dir() {
+                    self.cleanup_worktree(&dir_name);
+                    cleaned += 1;
+                }
+            }
+        }
+
+        Ok(cleaned)
     }
 
     pub fn shutdown(&mut self) -> Result<()> {

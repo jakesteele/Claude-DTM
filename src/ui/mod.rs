@@ -181,6 +181,8 @@ fn render_legend(buf: &mut Buffer, area: Rect, mode: InputMode) {
                 Span::styled(":pause ", Style::default().fg(Color::DarkGray)),
                 Span::styled("r", Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)),
                 Span::styled(":resume ", Style::default().fg(Color::DarkGray)),
+                Span::styled("c", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+                Span::styled(":cleanup ", Style::default().fg(Color::DarkGray)),
                 Span::styled(" LAYOUT ", Style::default().fg(Color::Black).bg(Color::Rgb(80, 80, 120)).add_modifier(Modifier::BOLD)),
                 Span::styled(" t", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
                 Span::styled(":tile ", Style::default().fg(Color::DarkGray)),

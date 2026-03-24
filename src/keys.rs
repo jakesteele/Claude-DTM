@@ -23,6 +23,7 @@ pub enum Action {
     FocusPane(usize),
     SearchSession,
     ToggleZoom,
+    CleanupWorktrees,
     Quit,
     DialogConfirm,
     DialogCancel,
@@ -82,6 +83,7 @@ pub fn map_key(key: KeyEvent, mode: InputMode) -> Option<Action> {
                 KeyCode::Char('p') => Some(Action::PauseSession),
                 KeyCode::Char('r') => Some(Action::ResumeSession),
                 KeyCode::Char('s') => Some(Action::SearchSession),
+                KeyCode::Char('c') => Some(Action::CleanupWorktrees),
                 KeyCode::Esc => Some(Action::ExitPane),
                 KeyCode::Char('Q') | KeyCode::Char('q') if shift => Some(Action::Quit),
                 KeyCode::Char(c @ '1'..='9') => {

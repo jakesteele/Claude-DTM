@@ -14,7 +14,7 @@ pub fn render_dialog(buf: &mut Buffer, area: Rect, dialog: &Dialog, app: &App) {
             let n = app.sessions.len().min(8);
             (5 + n as u16).max(7)
         }
-        Dialog::ConfirmKill { .. } => 5,
+        Dialog::ConfirmKill { .. } => 7,
         Dialog::ConfirmQuit => 5,
         Dialog::Error(_) => 7,
     };
@@ -32,8 +32,8 @@ pub fn render_dialog(buf: &mut Buffer, area: Rect, dialog: &Dialog, app: &App) {
         Dialog::SearchSession { query, selected } => {
             render_search_dialog(buf, dialog_area, query, *selected, app);
         }
-        Dialog::ConfirmKill { session_idx } => {
-            render_confirm_kill_dialog(buf, dialog_area, *session_idx, app);
+        Dialog::ConfirmKill { session_idx, clean_worktree } => {
+            render_confirm_kill_dialog(buf, dialog_area, *session_idx, *clean_worktree, app);
         }
         Dialog::ConfirmQuit => {
             render_confirm_quit_dialog(buf, dialog_area);
@@ -89,7 +89,7 @@ fn render_new_session_dialog(buf: &mut Buffer, area: Rect, name: &str) {
     paragraph.render(inner, buf);
 }
 
-fn render_confirm_kill_dialog(buf: &mut Buffer, area: Rect, session_idx: usize, app: &App) {
+fn render_confirm_kill_dialog(buf: &mut Buffer, area: Rect, session_idx: usize, clean_worktree: bool, app: &App) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Red))
@@ -109,8 +109,16 @@ fn render_confirm_kill_dialog(buf: &mut Buffer, area: Rect, session_idx: usize, 
         .map(|s| s.name.as_str())
         .unwrap_or("unknown");
 
+    let toggle = if clean_worktree {
+        "[x] Clean up worktree from disk"
+    } else {
+        "[ ] Clean up worktree from disk (press 'w' to toggle)"
+    };
+
     let lines = vec![
         Line::from(format!("Kill \"{}\"?", session_name)),
+        Line::from(""),
+        Line::from(Span::styled(toggle, Style::default().fg(Color::Yellow))),
         Line::from(""),
         Line::from(Span::styled(
             "Enter: confirm | Esc: cancel",
