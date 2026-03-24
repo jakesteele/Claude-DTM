@@ -150,9 +150,9 @@ pub fn render_pane(
     }
 
     let border_color = if is_entered {
-        Color::LightRed
+        Color::Green
     } else if is_focused {
-        Color::White
+        Color::Green
     } else {
         status_color(status)
     };
