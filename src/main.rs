@@ -153,16 +153,25 @@ fn run_event_loop(
                     }
                 }
                 Event::Paste(text) => {
-                    // Send entire paste as a block to the focused PTY
-                    if app.input_mode == keys::InputMode::PaneFocused {
-                        if let Some(session) = app.sessions.get_mut(app.focused) {
-                            // Wrap in bracketed paste escape sequences for the child
-                            let mut data = Vec::new();
-                            data.extend_from_slice(b"\x1b[200~");
-                            data.extend_from_slice(text.as_bytes());
-                            data.extend_from_slice(b"\x1b[201~");
-                            let _ = session.write_input(&data);
+                    match app.input_mode {
+                        keys::InputMode::PaneFocused => {
+                            if let Some(session) = app.sessions.get_mut(app.focused) {
+                                let mut data = Vec::new();
+                                data.extend_from_slice(b"\x1b[200~");
+                                data.extend_from_slice(text.as_bytes());
+                                data.extend_from_slice(b"\x1b[201~");
+                                let _ = session.write_input(&data);
+                            }
                         }
+                        keys::InputMode::Dialog => {
+                            // Insert pasted text into the active dialog input
+                            for c in text.chars() {
+                                if !c.is_control() {
+                                    app.handle_action(keys::Action::DialogInput(c))?;
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 _ => {}
