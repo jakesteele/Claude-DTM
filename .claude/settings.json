@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo:*)",
+      "Bash(git:*)",
+      "Bash(rustup:*)",
+      "Bash(source:*)",
+      "Bash(ls:*)",
+      "Bash(which:*)",
+      "Bash(python3:*)",
+      "Bash(cat:*)",
+      "Bash(cp:*)",
+      "Bash(rm:*)",
+      "Bash(mkdir:*)",
+      "Bash(echo:*)",
+      "Bash(./target/*)"
+    ]
+  }
+}
