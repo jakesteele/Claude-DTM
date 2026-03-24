@@ -7,16 +7,14 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap};
 use crate::app::{App, Dialog};
 
 pub fn render_dialog(buf: &mut Buffer, area: Rect, dialog: &Dialog, app: &App) {
-    // Calculate centered dialog rect
     let width = (area.width * 60 / 100).min(60).max(30);
     let height = match dialog {
-        Dialog::NewSession { .. } => 14,
+        Dialog::NewSession { .. } => 7,
         Dialog::SearchSession { .. } => {
-            // Dynamic height: 5 base + up to 8 result rows
             let n = app.sessions.len().min(8);
             (5 + n as u16).max(7)
         }
-        Dialog::ConfirmKill { .. } => 7,
+        Dialog::ConfirmKill { .. } => 5,
         Dialog::ConfirmQuit => 5,
         Dialog::Error(_) => 7,
     };
@@ -25,33 +23,17 @@ pub fn render_dialog(buf: &mut Buffer, area: Rect, dialog: &Dialog, app: &App) {
     let y = area.y + (area.height.saturating_sub(height)) / 2;
     let dialog_area = Rect::new(x, y, width, height);
 
-    // Clear the background
     Clear.render(dialog_area, buf);
 
     match dialog {
-        Dialog::NewSession {
-            name_input,
-            branch_input,
-            base_branch_input,
-            field_focus,
-        } => {
-            render_new_session_dialog(
-                buf,
-                dialog_area,
-                name_input,
-                branch_input,
-                base_branch_input,
-                *field_focus,
-            );
+        Dialog::NewSession { name_input } => {
+            render_new_session_dialog(buf, dialog_area, name_input);
         }
         Dialog::SearchSession { query, selected } => {
             render_search_dialog(buf, dialog_area, query, *selected, app);
         }
-        Dialog::ConfirmKill {
-            session_idx,
-            delete_branch,
-        } => {
-            render_confirm_kill_dialog(buf, dialog_area, *session_idx, *delete_branch);
+        Dialog::ConfirmKill { session_idx } => {
+            render_confirm_kill_dialog(buf, dialog_area, *session_idx, app);
         }
         Dialog::ConfirmQuit => {
             render_confirm_quit_dialog(buf, dialog_area);
@@ -62,14 +44,7 @@ pub fn render_dialog(buf: &mut Buffer, area: Rect, dialog: &Dialog, app: &App) {
     }
 }
 
-fn render_new_session_dialog(
-    buf: &mut Buffer,
-    area: Rect,
-    name: &str,
-    branch: &str,
-    base_branch: &str,
-    field_focus: usize,
-) {
+fn render_new_session_dialog(buf: &mut Buffer, area: Rect, name: &str) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan))
@@ -83,45 +58,29 @@ fn render_new_session_dialog(
     let inner = block.inner(area);
     block.render(area, buf);
 
-    let field_label = |idx: usize| -> Style {
-        if field_focus == idx {
-            Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::DarkGray)
-        }
-    };
-
-    let field_value = |idx: usize| -> Style {
-        if field_focus == idx {
-            Style::default().fg(Color::Yellow)
-        } else {
-            Style::default().fg(Color::DarkGray)
-        }
-    };
-
-    let name_hint = if name.is_empty() && field_focus == 0 {
-        " (shown on pane title)"
+    let hint = if name.is_empty() {
+        " (e.g. LSP-14939, fix-auth, etc.)"
     } else {
         ""
     };
 
     let lines = vec![
         Line::from(vec![
-            Span::styled("Session name:", field_label(0)),
-            Span::styled(name_hint, Style::default().fg(Color::Rgb(80, 80, 80))),
+            Span::styled(
+                "Session name:",
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(hint, Style::default().fg(Color::Rgb(80, 80, 80))),
         ]),
-        Line::from(Span::styled(format!(" > {}_", name), field_value(0))),
-        Line::from(""),
-        Line::from(Span::styled("Branch name:", field_label(1))),
-        Line::from(Span::styled(format!(" > {}_", branch), field_value(1))),
-        Line::from(""),
-        Line::from(Span::styled("Base branch:", field_label(2))),
-        Line::from(Span::styled(format!(" > {}_", base_branch), field_value(2))),
+        Line::from(Span::styled(
+            format!(" > {}_", name),
+            Style::default().fg(Color::Yellow),
+        )),
         Line::from(""),
         Line::from(Span::styled(
-            "Tab: switch field | Enter: create | Esc: cancel",
+            "Enter: create | Esc: cancel",
             Style::default().fg(Color::DarkGray),
         )),
     ];
@@ -130,12 +89,7 @@ fn render_new_session_dialog(
     paragraph.render(inner, buf);
 }
 
-fn render_confirm_kill_dialog(
-    buf: &mut Buffer,
-    area: Rect,
-    _session_idx: usize,
-    delete_branch: bool,
-) {
+fn render_confirm_kill_dialog(buf: &mut Buffer, area: Rect, session_idx: usize, app: &App) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Red))
@@ -149,16 +103,14 @@ fn render_confirm_kill_dialog(
     let inner = block.inner(area);
     block.render(area, buf);
 
-    let branch_toggle = if delete_branch {
-        "[x] Delete branch"
-    } else {
-        "[ ] Delete branch (press 'b' to toggle)"
-    };
+    let session_name = app
+        .sessions
+        .get(session_idx)
+        .map(|s| s.name.as_str())
+        .unwrap_or("unknown");
 
     let lines = vec![
-        Line::from("Worktree will be removed."),
-        Line::from(""),
-        Line::from(Span::styled(branch_toggle, Style::default().fg(Color::Yellow))),
+        Line::from(format!("Kill \"{}\"?", session_name)),
         Line::from(""),
         Line::from(Span::styled(
             "Enter: confirm | Esc: cancel",
@@ -185,7 +137,7 @@ fn render_confirm_quit_dialog(buf: &mut Buffer, area: Rect) {
     block.render(area, buf);
 
     let lines = vec![
-        Line::from("Active sessions will be paused."),
+        Line::from("Active sessions will be killed."),
         Line::from(""),
         Line::from(Span::styled(
             "Enter: confirm | Esc: cancel",
@@ -249,9 +201,8 @@ fn render_search_dialog(
 
     let mut lines: Vec<Line> = Vec::new();
 
-    // Search input field
     lines.push(Line::from(vec![
-        Span::styled(" 🔍 ", Style::default().fg(Color::Yellow)),
+        Span::styled(" > ", Style::default().fg(Color::Yellow)),
         Span::styled(
             format!("{}_", query),
             Style::default().fg(Color::Yellow),
@@ -259,7 +210,6 @@ fn render_search_dialog(
     ]));
     lines.push(Line::from(""));
 
-    // Filter sessions
     let q = query.to_lowercase();
     let matches: Vec<(usize, &crate::session::Session)> = app
         .sessions
@@ -270,7 +220,6 @@ fn render_search_dialog(
                 true
             } else {
                 s.name.to_lowercase().contains(&q)
-                    || s.branch.to_lowercase().contains(&q)
             }
         })
         .collect();
@@ -283,7 +232,7 @@ fn render_search_dialog(
     } else {
         for (match_idx, (pane_idx, session)) in matches.iter().enumerate() {
             let is_selected = match_idx == selected;
-            let prefix = if is_selected { " ▸ " } else { "   " };
+            let prefix = if is_selected { " > " } else { "   " };
             let status_color = crate::ui::pane::status_color(session.status);
 
             let style = if is_selected {
@@ -311,7 +260,7 @@ fn render_search_dialog(
 
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
-        "↑/↓: select | Enter: focus | Esc: cancel",
+        "Up/Down: select | Enter: focus | Esc: cancel",
         Style::default().fg(Color::DarkGray),
     )));
 

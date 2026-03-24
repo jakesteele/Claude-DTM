@@ -1,12 +1,10 @@
 use anyhow::Result;
-use chrono::Utc;
 use std::path::PathBuf;
 use std::time::Instant;
 
 use crate::config::Config;
 use crate::keys::{Action, InputMode};
 use crate::session::status::SessionStatus;
-use crate::session::worktree;
 use crate::session::{Session, SessionInfo, SessionsFile};
 use crate::tiling::LayoutMode;
 
@@ -14,10 +12,6 @@ use crate::tiling::LayoutMode;
 pub enum Dialog {
     NewSession {
         name_input: String,
-        branch_input: String,
-        base_branch_input: String,
-        /// 0 = name, 1 = branch, 2 = base branch
-        field_focus: usize,
     },
     SearchSession {
         query: String,
@@ -26,7 +20,6 @@ pub enum Dialog {
     },
     ConfirmKill {
         session_idx: usize,
-        delete_branch: bool,
     },
     ConfirmQuit,
     Error(String),
@@ -131,12 +124,8 @@ impl App {
                 self.layout_mode = LayoutMode::Grid;
             }
             Action::NewSession => {
-                let timestamp = Utc::now().format("%Y%m%d-%H%M%S");
                 self.show_dialog = Some(Dialog::NewSession {
                     name_input: String::new(),
-                    branch_input: format!("claude-dtm/{}", timestamp),
-                    base_branch_input: self.config.default_base_branch.clone(),
-                    field_focus: 0,
                 });
                 self.input_mode = InputMode::Dialog;
             }
@@ -144,7 +133,6 @@ impl App {
                 if !self.sessions.is_empty() {
                     self.show_dialog = Some(Dialog::ConfirmKill {
                         session_idx: self.focused,
-                        delete_branch: false,
                     });
                     self.input_mode = InputMode::Dialog;
                 }
@@ -162,8 +150,8 @@ impl App {
             Action::ResumeSession => {
                 if let Some(session) = self.sessions.get_mut(self.focused) {
                     if session.status == SessionStatus::Paused {
-                        let cmd = self.config.default_command.clone();
-                        if let Err(e) = session.spawn(&cmd, 24, 80) {
+                        let cmd = format!("{} --worktree {}", self.config.default_command, session.name);
+                        if let Err(e) = session.spawn(&cmd, &self.repo_path, 24, 80) {
                             self.show_dialog = Some(Dialog::Error(format!("Resume failed: {}", e)));
                             self.input_mode = InputMode::Dialog;
                         }
@@ -195,7 +183,6 @@ impl App {
             }
             Action::ToggleZoom => {
                 if self.sessions.len() > 1 {
-                    // Promote focused to master and switch to master-stack layout
                     if self.focused != 0 {
                         self.sessions.swap(0, self.focused);
                         self.focused = 0;
@@ -250,16 +237,10 @@ impl App {
         self.input_mode = InputMode::Normal;
 
         match dialog {
-            Some(Dialog::NewSession {
-                name_input,
-                branch_input,
-                base_branch_input,
-                ..
-            }) => {
-                self.create_session(&name_input, &branch_input, &base_branch_input)?;
+            Some(Dialog::NewSession { name_input }) => {
+                self.create_session(&name_input)?;
             }
             Some(Dialog::SearchSession { query, selected }) => {
-                // Find matching sessions and focus the selected one
                 let matches: Vec<usize> = self
                     .sessions
                     .iter()
@@ -270,7 +251,6 @@ impl App {
                         } else {
                             let q = query.to_lowercase();
                             s.name.to_lowercase().contains(&q)
-                                || s.branch.to_lowercase().contains(&q)
                         }
                     })
                     .map(|(i, _)| i)
@@ -280,11 +260,8 @@ impl App {
                     self.focused = idx;
                 }
             }
-            Some(Dialog::ConfirmKill {
-                session_idx,
-                delete_branch,
-            }) => {
-                self.kill_session(session_idx, delete_branch)?;
+            Some(Dialog::ConfirmKill { session_idx }) => {
+                self.kill_session(session_idx)?;
             }
             Some(Dialog::ConfirmQuit) => {
                 self.shutdown()?;
@@ -299,56 +276,25 @@ impl App {
     fn handle_dialog_input(&mut self, c: char) {
         if let Some(Dialog::NewSession {
             ref mut name_input,
-            ref mut branch_input,
-            ref mut base_branch_input,
-            field_focus,
         }) = self.show_dialog
         {
-            if c == '\t' {
-                if let Some(Dialog::NewSession {
-                    ref mut field_focus, ..
-                }) = self.show_dialog
-                {
-                    *field_focus = (*field_focus + 1) % 3;
-                }
-                return;
-            }
-            match field_focus {
-                0 => name_input.push(c),
-                1 => branch_input.push(c),
-                _ => base_branch_input.push(c),
-            }
+            name_input.push(c);
         } else if let Some(Dialog::SearchSession {
             ref mut query,
             ref mut selected,
         }) = self.show_dialog
         {
             query.push(c);
-            *selected = 0; // reset selection when query changes
-        } else if let Some(Dialog::ConfirmKill {
-            ref mut delete_branch,
-            ..
-        }) = self.show_dialog
-        {
-            if c == 'b' || c == 'B' {
-                *delete_branch = !*delete_branch;
-            }
+            *selected = 0;
         }
     }
 
     fn handle_dialog_backspace(&mut self) {
         if let Some(Dialog::NewSession {
             ref mut name_input,
-            ref mut branch_input,
-            ref mut base_branch_input,
-            field_focus,
         }) = self.show_dialog
         {
-            match field_focus {
-                0 => { name_input.pop(); }
-                1 => { branch_input.pop(); }
-                _ => { base_branch_input.pop(); }
-            }
+            name_input.pop();
         } else if let Some(Dialog::SearchSession {
             ref mut query,
             ref mut selected,
@@ -383,7 +329,6 @@ impl App {
                     } else {
                         let q = query.to_lowercase();
                         s.name.to_lowercase().contains(&q)
-                            || s.branch.to_lowercase().contains(&q)
                     }
                 })
                 .count();
@@ -421,28 +366,19 @@ impl App {
         Ok(())
     }
 
-    pub fn create_session(&mut self, name: &str, branch: &str, base_branch: &str) -> Result<()> {
-        // Create worktree (uses session name as folder name)
-        let worktree_path = match worktree::create_worktree(&self.repo_path, branch, base_branch, name) {
-            Ok(path) => path,
-            Err(e) => {
-                self.show_dialog = Some(Dialog::Error(format!("Failed to create worktree: {}", e)));
-                self.input_mode = InputMode::Dialog;
-                return Ok(());
-            }
-        };
-
-        let id = uuid::Uuid::new_v4().to_string();
-        // Use name if provided, otherwise fall back to branch
+    pub fn create_session(&mut self, name: &str) -> Result<()> {
         let display_name = if name.trim().is_empty() {
-            branch.to_string()
+            format!("session-{}", self.sessions.len() + 1)
         } else {
             name.to_string()
         };
-        let mut session = Session::new(id, display_name, branch.to_string(), worktree_path);
 
-        let cmd = self.config.default_command.clone();
-        if let Err(e) = session.spawn(&cmd, 24, 80) {
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut session = Session::new(id, display_name.clone());
+
+        // Build command: claude --worktree <name>
+        let cmd = format!("{} --worktree {}", self.config.default_command, display_name);
+        if let Err(e) = session.spawn(&cmd, &self.repo_path, 24, 80) {
             self.show_dialog = Some(Dialog::Error(format!("Failed to spawn session: {}", e)));
             self.input_mode = InputMode::Dialog;
             return Ok(());
@@ -453,25 +389,14 @@ impl App {
         Ok(())
     }
 
-    pub fn kill_session(&mut self, idx: usize, delete_branch: bool) -> Result<()> {
+    pub fn kill_session(&mut self, idx: usize) -> Result<()> {
         if idx >= self.sessions.len() {
             return Ok(());
         }
 
         let mut session = self.sessions.remove(idx);
-
-        // Kill the process
         let _ = session.kill();
 
-        // Remove worktree
-        let _ = worktree::remove_worktree(&self.repo_path, &session.worktree_path);
-
-        // Optionally delete branch
-        if delete_branch {
-            let _ = worktree::delete_branch(&self.repo_path, &session.branch);
-        }
-
-        // Adjust focus
         if !self.sessions.is_empty() {
             self.focused = self.focused.min(self.sessions.len() - 1);
         } else {
@@ -482,10 +407,8 @@ impl App {
     }
 
     pub fn shutdown(&mut self) -> Result<()> {
-        // Save sessions for potential resume
         self.save_sessions()?;
 
-        // Kill all active sessions
         for session in &mut self.sessions {
             if session.status != SessionStatus::Done {
                 let _ = session.kill();
@@ -515,10 +438,8 @@ impl App {
         let file: SessionsFile = serde_json::from_str(&contents)?;
 
         for info in file.sessions {
-            if info.worktree_path.exists() {
-                let session = Session::new(info.id, info.name, info.branch, info.worktree_path);
-                self.sessions.push(session);
-            }
+            let session = Session::new(info.id, info.name);
+            self.sessions.push(session);
         }
         Ok(())
     }

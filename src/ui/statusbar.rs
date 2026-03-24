@@ -57,7 +57,7 @@ pub fn render_statusbar(buf: &mut Buffer, area: Rect, app: &App) {
     if let Some(session) = app.sessions.get(app.focused) {
         let color = crate::ui::pane::status_color(session.status);
         spans.push(Span::styled(
-            format!(" {} ", session.branch),
+            format!(" {} ", session.name),
             Style::default().fg(color).add_modifier(Modifier::BOLD),
         ));
         spans.push(Span::raw(" "));

@@ -1,12 +1,10 @@
 pub mod pty;
 pub mod status;
-pub mod worktree;
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -16,8 +14,6 @@ use self::status::SessionStatus;
 pub struct Session {
     pub id: String,
     pub name: String,
-    pub branch: String,
-    pub worktree_path: PathBuf,
     pub pty_handle: Option<PtyHandle>,
     pub parser: Arc<Mutex<vt100::Parser>>,
     pub status: SessionStatus,
@@ -28,12 +24,10 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(id: String, name: String, branch: String, worktree_path: PathBuf) -> Self {
+    pub fn new(id: String, name: String) -> Self {
         Self {
             id,
             name,
-            branch,
-            worktree_path,
             pty_handle: None,
             parser: Arc::new(Mutex::new(vt100::Parser::new(24, 80, 0))),
             status: SessionStatus::Paused,
@@ -44,8 +38,8 @@ impl Session {
         }
     }
 
-    pub fn spawn(&mut self, command: &str, rows: u16, cols: u16) -> Result<()> {
-        let mut handle = pty::spawn_pty(&self.worktree_path, command, rows, cols)?;
+    pub fn spawn(&mut self, command: &str, cwd: &std::path::Path, rows: u16, cols: u16) -> Result<()> {
+        let mut handle = pty::spawn_pty(cwd, command, rows, cols)?;
 
         let reader = handle.reader.take();
 
@@ -61,7 +55,7 @@ impl Session {
             *p = vt100::Parser::new(rows, cols, 0);
         }
 
-        // Spawn reader thread (blocking I/O, not async)
+        // Spawn reader thread (blocking I/O)
         if let Some(mut reader) = reader {
             let parser = self.parser.clone();
             let last_output = self.last_output.clone();
@@ -132,8 +126,6 @@ impl Session {
 pub struct SessionInfo {
     pub id: String,
     pub name: String,
-    pub branch: String,
-    pub worktree_path: PathBuf,
     pub status: SessionStatus,
     pub created_at: DateTime<Utc>,
 }
@@ -143,8 +135,6 @@ impl From<&Session> for SessionInfo {
         SessionInfo {
             id: s.id.clone(),
             name: s.name.clone(),
-            branch: s.branch.clone(),
-            worktree_path: s.worktree_path.clone(),
             status: s.status,
             created_at: s.created_at,
         }
