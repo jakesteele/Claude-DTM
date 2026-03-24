@@ -4,19 +4,7 @@ A DWM-inspired tiling terminal manager for running multiple [Claude Code](https:
 
 Think **"tmux meets DWM, purpose-built for Claude Code."**
 
-```
-┌──────────────────────┬─────────────┐
-│ [1] feat/auth (RUN)  │ [2] fix/bug │
-│                      │  (WAITING)  │
-│  Claude is working   │─────────────│
-│  on authentication   │ [3] refactor│
-│  changes...          │  (WAITING)  │
-│                      │─────────────│
-│                      │ [4] tests   │
-│                      │  (RUNNING)  │
-└──────────────────────┴─────────────┘
- ◆ DWM-CLAUDE ◆  4/4 sessions  []=
-```
+![DWM-Claude running in Ghostty](assets/screenshot.png)
 
 ## Features
 

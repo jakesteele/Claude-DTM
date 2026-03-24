@@ -10,7 +10,7 @@ pub fn render_dialog(buf: &mut Buffer, area: Rect, dialog: &Dialog) {
     // Calculate centered dialog rect
     let width = (area.width * 60 / 100).min(60).max(30);
     let height = match dialog {
-        Dialog::NewSession { .. } => 10,
+        Dialog::NewSession { .. } => 14,
         Dialog::ConfirmKill { .. } => 7,
         Dialog::ConfirmQuit => 5,
         Dialog::Error(_) => 7,
@@ -25,6 +25,7 @@ pub fn render_dialog(buf: &mut Buffer, area: Rect, dialog: &Dialog) {
 
     match dialog {
         Dialog::NewSession {
+            name_input,
             branch_input,
             base_branch_input,
             field_focus,
@@ -32,6 +33,7 @@ pub fn render_dialog(buf: &mut Buffer, area: Rect, dialog: &Dialog) {
             render_new_session_dialog(
                 buf,
                 dialog_area,
+                name_input,
                 branch_input,
                 base_branch_input,
                 *field_focus,
@@ -55,6 +57,7 @@ pub fn render_dialog(buf: &mut Buffer, area: Rect, dialog: &Dialog) {
 fn render_new_session_dialog(
     buf: &mut Buffer,
     area: Rect,
+    name: &str,
     branch: &str,
     base_branch: &str,
     field_focus: usize,
@@ -72,42 +75,42 @@ fn render_new_session_dialog(
     let inner = block.inner(area);
     block.render(area, buf);
 
-    let branch_style = if field_focus == 0 {
-        Style::default()
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::DarkGray)
+    let field_label = |idx: usize| -> Style {
+        if field_focus == idx {
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        }
     };
 
-    let base_style = if field_focus == 1 {
-        Style::default()
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD)
+    let field_value = |idx: usize| -> Style {
+        if field_focus == idx {
+            Style::default().fg(Color::Yellow)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        }
+    };
+
+    let name_hint = if name.is_empty() && field_focus == 0 {
+        " (shown on pane title)"
     } else {
-        Style::default().fg(Color::DarkGray)
+        ""
     };
 
     let lines = vec![
-        Line::from(Span::styled("Branch name:", branch_style)),
-        Line::from(Span::styled(
-            format!(" > {}_", branch),
-            if field_focus == 0 {
-                Style::default().fg(Color::Yellow)
-            } else {
-                Style::default().fg(Color::DarkGray)
-            },
-        )),
+        Line::from(vec![
+            Span::styled("Session name:", field_label(0)),
+            Span::styled(name_hint, Style::default().fg(Color::Rgb(80, 80, 80))),
+        ]),
+        Line::from(Span::styled(format!(" > {}_", name), field_value(0))),
         Line::from(""),
-        Line::from(Span::styled("Base branch:", base_style)),
-        Line::from(Span::styled(
-            format!(" > {}_", base_branch),
-            if field_focus == 1 {
-                Style::default().fg(Color::Yellow)
-            } else {
-                Style::default().fg(Color::DarkGray)
-            },
-        )),
+        Line::from(Span::styled("Branch name:", field_label(1))),
+        Line::from(Span::styled(format!(" > {}_", branch), field_value(1))),
+        Line::from(""),
+        Line::from(Span::styled("Base branch:", field_label(2))),
+        Line::from(Span::styled(format!(" > {}_", base_branch), field_value(2))),
         Line::from(""),
         Line::from(Span::styled(
             "Tab: switch field | Enter: create | Esc: cancel",

@@ -13,9 +13,10 @@ use crate::tiling::LayoutMode;
 #[derive(Debug, Clone)]
 pub enum Dialog {
     NewSession {
+        name_input: String,
         branch_input: String,
         base_branch_input: String,
-        /// 0 = branch name field, 1 = base branch field
+        /// 0 = name, 1 = branch, 2 = base branch
         field_focus: usize,
     },
     ConfirmKill {
@@ -127,6 +128,7 @@ impl App {
             Action::NewSession => {
                 let timestamp = Utc::now().format("%Y%m%d-%H%M%S");
                 self.show_dialog = Some(Dialog::NewSession {
+                    name_input: String::new(),
                     branch_input: format!("dwm-claude/{}", timestamp),
                     base_branch_input: self.config.default_base_branch.clone(),
                     field_focus: 0,
@@ -219,11 +221,12 @@ impl App {
 
         match dialog {
             Some(Dialog::NewSession {
+                name_input,
                 branch_input,
                 base_branch_input,
                 ..
             }) => {
-                self.create_session(&branch_input, &base_branch_input)?;
+                self.create_session(&name_input, &branch_input, &base_branch_input)?;
             }
             Some(Dialog::ConfirmKill {
                 session_idx,
@@ -243,6 +246,7 @@ impl App {
 
     fn handle_dialog_input(&mut self, c: char) {
         if let Some(Dialog::NewSession {
+            ref mut name_input,
             ref mut branch_input,
             ref mut base_branch_input,
             field_focus,
@@ -253,14 +257,14 @@ impl App {
                     ref mut field_focus, ..
                 }) = self.show_dialog
                 {
-                    *field_focus = (*field_focus + 1) % 2;
+                    *field_focus = (*field_focus + 1) % 3;
                 }
                 return;
             }
-            if field_focus == 0 {
-                branch_input.push(c);
-            } else {
-                base_branch_input.push(c);
+            match field_focus {
+                0 => name_input.push(c),
+                1 => branch_input.push(c),
+                _ => base_branch_input.push(c),
             }
         } else if let Some(Dialog::ConfirmKill {
             ref mut delete_branch,
@@ -275,15 +279,16 @@ impl App {
 
     fn handle_dialog_backspace(&mut self) {
         if let Some(Dialog::NewSession {
+            ref mut name_input,
             ref mut branch_input,
             ref mut base_branch_input,
             field_focus,
         }) = self.show_dialog
         {
-            if field_focus == 0 {
-                branch_input.pop();
-            } else {
-                base_branch_input.pop();
+            match field_focus {
+                0 => { name_input.pop(); }
+                1 => { branch_input.pop(); }
+                _ => { base_branch_input.pop(); }
             }
         }
     }
@@ -315,7 +320,7 @@ impl App {
         Ok(())
     }
 
-    pub fn create_session(&mut self, branch: &str, base_branch: &str) -> Result<()> {
+    pub fn create_session(&mut self, name: &str, branch: &str, base_branch: &str) -> Result<()> {
         // Create worktree
         let worktree_path = match worktree::create_worktree(&self.repo_path, branch, base_branch) {
             Ok(path) => path,
@@ -327,7 +332,13 @@ impl App {
         };
 
         let id = uuid::Uuid::new_v4().to_string();
-        let mut session = Session::new(id, branch.to_string(), worktree_path);
+        // Use name if provided, otherwise fall back to branch
+        let display_name = if name.trim().is_empty() {
+            branch.to_string()
+        } else {
+            name.to_string()
+        };
+        let mut session = Session::new(id, display_name, branch.to_string(), worktree_path);
 
         let cmd = self.config.default_command.clone();
         if let Err(e) = session.spawn(&cmd, 24, 80) {
@@ -404,7 +415,7 @@ impl App {
 
         for info in file.sessions {
             if info.worktree_path.exists() {
-                let session = Session::new(info.id, info.branch, info.worktree_path);
+                let session = Session::new(info.id, info.name, info.branch, info.worktree_path);
                 self.sessions.push(session);
             }
         }

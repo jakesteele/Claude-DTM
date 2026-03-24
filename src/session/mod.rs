@@ -16,6 +16,7 @@ use self::status::SessionStatus;
 
 pub struct Session {
     pub id: String,
+    pub name: String,
     pub branch: String,
     pub worktree_path: PathBuf,
     pub pty_handle: Option<PtyHandle>,
@@ -28,9 +29,10 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(id: String, branch: String, worktree_path: PathBuf) -> Self {
+    pub fn new(id: String, name: String, branch: String, worktree_path: PathBuf) -> Self {
         Self {
             id,
+            name,
             branch,
             worktree_path,
             pty_handle: None,
@@ -137,6 +139,7 @@ impl Session {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SessionInfo {
     pub id: String,
+    pub name: String,
     pub branch: String,
     pub worktree_path: PathBuf,
     pub status: SessionStatus,
@@ -147,6 +150,7 @@ impl From<&Session> for SessionInfo {
     fn from(s: &Session) -> Self {
         SessionInfo {
             id: s.id.clone(),
+            name: s.name.clone(),
             branch: s.branch.clone(),
             worktree_path: s.worktree_path.clone(),
             status: s.status,

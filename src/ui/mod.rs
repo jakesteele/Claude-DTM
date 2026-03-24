@@ -75,7 +75,7 @@ pub fn render(frame: &mut ratatui::Frame, app: &App, screen_cache: &[Vec<Line<'s
             frame.buffer_mut(),
             *rect,
             lines,
-            &session.branch,
+            &session.name,
             session.status,
             is_focused,
             i,
@@ -232,41 +232,32 @@ fn render_empty_state(buf: &mut Buffer, area: Rect) {
 
     let center_y = area.y + area.height / 2 - 4;
 
+    //  box width = 42 chars
+    let bdr = Style::default().fg(Color::Rgb(60, 60, 100));
     let lines = vec![
-        Line::from(Span::styled(
-            "┌─────────────────────────────────┐",
-            Style::default().fg(Color::Rgb(60, 60, 100)),
-        )),
-        Line::from(Span::styled(
-            "│                                 │",
-            Style::default().fg(Color::Rgb(60, 60, 100)),
-        )),
+        Line::from(Span::styled("┌────────────────────────────────────────┐", bdr)),
+        Line::from(Span::styled("│                                        │", bdr)),
         Line::from(vec![
-            Span::styled("│   ", Style::default().fg(Color::Rgb(60, 60, 100))),
+            Span::styled("│          ", bdr),
             Span::styled("No active sessions", Style::default().fg(Color::DarkGray)),
-            Span::styled("            │", Style::default().fg(Color::Rgb(60, 60, 100))),
+            Span::styled("            │", bdr),
         ]),
         Line::from(vec![
-            Span::styled("│   Press ", Style::default().fg(Color::Rgb(60, 60, 100))),
+            Span::styled("│      Press ", bdr),
             Span::styled("n", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-            Span::styled(" to create a new session ", Style::default().fg(Color::DarkGray)),
-            Span::styled("│", Style::default().fg(Color::Rgb(60, 60, 100))),
+            Span::styled(" to create a new session", Style::default().fg(Color::DarkGray)),
+            Span::styled("     │", bdr),
         ]),
-        Line::from(Span::styled(
-            "│                                 │",
-            Style::default().fg(Color::Rgb(60, 60, 100)),
-        )),
-        Line::from(Span::styled(
-            "└─────────────────────────────────┘",
-            Style::default().fg(Color::Rgb(60, 60, 100)),
-        )),
+        Line::from(Span::styled("│                                        │", bdr)),
+        Line::from(Span::styled("└────────────────────────────────────────┘", bdr)),
     ];
 
+    let box_w = 42u16;
     for (i, line) in lines.iter().enumerate() {
         let y = center_y + i as u16;
         if y < area.y + area.height {
-            let x = area.x + (area.width.saturating_sub(35)) / 2;
-            buf.set_line(x, y, line, 35);
+            let x = area.x + (area.width.saturating_sub(box_w)) / 2;
+            buf.set_line(x, y, line, box_w);
         }
     }
 }
