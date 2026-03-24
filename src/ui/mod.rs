@@ -149,9 +149,9 @@ fn render_legend(buf: &mut Buffer, area: Rect, mode: InputMode) {
         InputMode::Normal => {
             let row1 = Line::from(vec![
                 Span::styled(" NAV ", Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)),
-                Span::styled(" j", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled(" ↑", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
                 Span::styled("/", Style::default().fg(Color::DarkGray)),
-                Span::styled("k", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+                Span::styled("↓", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
                 Span::styled(":focus ", Style::default().fg(Color::DarkGray)),
                 Span::styled("J", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
                 Span::styled("/", Style::default().fg(Color::DarkGray)),

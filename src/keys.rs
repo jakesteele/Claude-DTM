@@ -62,7 +62,9 @@ pub fn map_key(key: KeyEvent, mode: InputMode) -> Option<Action> {
         InputMode::Normal => {
             let shift = key.modifiers.contains(KeyModifiers::SHIFT);
             match key.code {
+                KeyCode::Down => Some(Action::FocusNext),
                 KeyCode::Char('j') if !shift => Some(Action::FocusNext),
+                KeyCode::Up => Some(Action::FocusPrev),
                 KeyCode::Char('k') if !shift => Some(Action::FocusPrev),
                 KeyCode::Char('J') | KeyCode::Char('j') if shift => Some(Action::SwapNext),
                 KeyCode::Char('K') | KeyCode::Char('k') if shift => Some(Action::SwapPrev),
