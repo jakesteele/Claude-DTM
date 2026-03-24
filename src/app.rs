@@ -422,15 +422,15 @@ impl App {
         Ok(())
     }
 
-    pub async fn update_statuses(&mut self) {
+    pub fn update_statuses(&mut self) {
         for session in &mut self.sessions {
             if session.status == SessionStatus::Paused || session.status == SessionStatus::Done {
                 continue;
             }
 
-            let reader_active = *session.reader_active.lock().await;
-            let last_output = *session.last_output.lock().await;
-            let parser = session.parser.lock().await;
+            let reader_active = *session.reader_active.lock().unwrap();
+            let last_output = *session.last_output.lock().unwrap();
+            let parser = session.parser.lock().unwrap();
 
             if !reader_active && session.pty_handle.is_some() {
                 session.status = SessionStatus::Done;

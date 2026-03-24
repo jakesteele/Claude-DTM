@@ -226,38 +226,38 @@ fn render_legend(buf: &mut Buffer, area: Rect, mode: InputMode) {
 }
 
 fn render_empty_state(buf: &mut Buffer, area: Rect) {
+    use ratatui::widgets::{Block, Borders, Paragraph, Widget};
+    use ratatui::layout::Alignment;
+
     if area.height < 8 || area.width < 40 {
         return;
     }
 
-    let center_y = area.y + area.height / 2 - 4;
+    let box_w = 40u16;
+    let box_h = 5u16;
+    let x = area.x + (area.width.saturating_sub(box_w)) / 2;
+    let y = area.y + (area.height.saturating_sub(box_h)) / 2;
+    let box_area = Rect::new(x, y, box_w, box_h);
 
-    //  box width = 42 chars
-    let bdr = Style::default().fg(Color::Rgb(60, 60, 100));
-    let lines = vec![
-        Line::from(Span::styled("┌────────────────────────────────────────┐", bdr)),
-        Line::from(Span::styled("│                                        │", bdr)),
-        Line::from(vec![
-            Span::styled("│          ", bdr),
-            Span::styled("No active sessions", Style::default().fg(Color::DarkGray)),
-            Span::styled("            │", bdr),
-        ]),
-        Line::from(vec![
-            Span::styled("│     Press ", bdr),
-            Span::styled("n", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-            Span::styled(" to create a new session", Style::default().fg(Color::DarkGray)),
-            Span::styled("    │", bdr),
-        ]),
-        Line::from(Span::styled("│                                        │", bdr)),
-        Line::from(Span::styled("└────────────────────────────────────────┘", bdr)),
-    ];
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Rgb(60, 60, 100)));
 
-    let box_w = 42u16;
-    for (i, line) in lines.iter().enumerate() {
-        let y = center_y + i as u16;
-        if y < area.y + area.height {
-            let x = area.x + (area.width.saturating_sub(box_w)) / 2;
-            buf.set_line(x, y, line, box_w);
-        }
-    }
+    let inner = block.inner(box_area);
+    block.render(box_area, buf);
+
+    // Center text inside the block
+    let line1 = Line::from(Span::styled(
+        "No active sessions",
+        Style::default().fg(Color::DarkGray),
+    ));
+    let line2 = Line::from(vec![
+        Span::styled("Press ", Style::default().fg(Color::Rgb(60, 60, 100))),
+        Span::styled("n", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+        Span::styled(" to create a new session", Style::default().fg(Color::DarkGray)),
+    ]);
+
+    let paragraph = Paragraph::new(vec![line1, line2])
+        .alignment(Alignment::Center);
+    paragraph.render(inner, buf);
 }

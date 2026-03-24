@@ -12,8 +12,8 @@ use app::App;
 use clap::Parser;
 use config::Config;
 use crossterm::event::{self, Event, KeyEventKind};
-use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::execute;
+use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use std::io;
@@ -38,14 +38,11 @@ struct Cli {
     command: Option<String>,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Load config
     let mut config = Config::load().unwrap_or_default();
 
-    // CLI overrides
     if let Some(ref base) = cli.base_branch {
         config.default_base_branch = base.clone();
     }
@@ -76,8 +73,6 @@ async fn main() -> Result<()> {
     }
 
     let mut app = App::new(repo_path, config);
-
-    // Load saved sessions
     let _ = app.load_sessions();
 
     // Setup terminal
@@ -88,7 +83,7 @@ async fn main() -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
 
-    let result = run_event_loop(&mut terminal, &mut app).await;
+    let result = run_event_loop(&mut terminal, &mut app);
 
     // Restore terminal
     terminal::disable_raw_mode()?;
@@ -102,29 +97,22 @@ async fn main() -> Result<()> {
     result
 }
 
-async fn run_event_loop(
+fn run_event_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
 ) -> Result<()> {
     let tick_rate = Duration::from_millis(50);
 
     loop {
-        // Collect screen data outside of the render closure
         let mut screen_cache: Vec<Vec<ratatui::text::Line<'static>>> = Vec::new();
         let term_size = terminal.size()?;
 
-        // Calculate pane areas for proper sizing
         let header_height = 2u16;
         let legend_height = 3u16;
         let statusbar_height = 1u16;
         let chrome_height = header_height + legend_height + statusbar_height;
         let pane_area_height = term_size.height.saturating_sub(chrome_height);
-        let pane_area = ratatui::layout::Rect::new(
-            0,
-            header_height,
-            term_size.width,
-            pane_area_height,
-        );
+        let pane_area = ratatui::layout::Rect::new(0, header_height, term_size.width, pane_area_height);
 
         let rects = tiling::tile(
             pane_area,
@@ -137,29 +125,24 @@ async fn run_event_loop(
 
         for (i, session) in app.sessions.iter_mut().enumerate() {
             let rect = rects.get(i).copied().unwrap_or_default();
-            // Inner area (minus borders)
             let inner_rows = rect.height.saturating_sub(2);
             let inner_cols = rect.width.saturating_sub(2);
 
             if inner_rows > 0 && inner_cols > 0 {
-                // Resize PTY to match pane
                 let _ = session.resize(inner_rows, inner_cols);
             }
 
-            let parser = session.parser.lock().await;
+            let parser = session.parser.lock().unwrap();
             let lines = ui::pane::render_terminal_screen(&parser, inner_rows, inner_cols);
             screen_cache.push(lines);
         }
 
-        // Render
         terminal.draw(|frame| {
             ui::render(frame, app, &screen_cache);
         })?;
 
-        // Update session statuses periodically
-        app.update_statuses().await;
+        app.update_statuses();
 
-        // Poll for events
         if event::poll(tick_rate)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == KeyEventKind::Press {

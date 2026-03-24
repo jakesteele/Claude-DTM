@@ -7,9 +7,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tokio::sync::Mutex;
 
 use self::pty::PtyHandle;
 use self::status::SessionStatus;
@@ -58,41 +57,37 @@ impl Session {
 
         // Reset parser to correct size
         {
-            let parser = self.parser.clone();
-            let rt = tokio::runtime::Handle::current();
-            rt.block_on(async {
-                let mut p = parser.lock().await;
-                *p = vt100::Parser::new(rows, cols, 0);
-            });
+            let mut p = self.parser.lock().unwrap();
+            *p = vt100::Parser::new(rows, cols, 0);
         }
 
-        // Spawn async reader task
+        // Spawn reader thread (blocking I/O, not async)
         if let Some(mut reader) = reader {
             let parser = self.parser.clone();
             let last_output = self.last_output.clone();
             let reader_active = self.reader_active.clone();
 
-            {
-                let rt = tokio::runtime::Handle::current();
-                rt.block_on(async {
-                    *reader_active.lock().await = true;
-                });
-            }
+            *reader_active.lock().unwrap() = true;
 
-            tokio::spawn(async move {
+            std::thread::spawn(move || {
                 let mut buf = [0u8; 4096];
                 loop {
                     match reader.read(&mut buf) {
                         Ok(0) => break,
                         Ok(n) => {
-                            let mut p = parser.lock().await;
-                            p.process(&buf[..n]);
-                            *last_output.lock().await = Instant::now();
+                            if let Ok(mut p) = parser.lock() {
+                                p.process(&buf[..n]);
+                            }
+                            if let Ok(mut t) = last_output.lock() {
+                                *t = Instant::now();
+                            }
                         }
                         Err(_) => break,
                     }
                 }
-                *reader_active.lock().await = false;
+                if let Ok(mut active) = reader_active.lock() {
+                    *active = false;
+                }
             });
         }
 
@@ -111,12 +106,9 @@ impl Session {
     pub fn resize(&mut self, rows: u16, cols: u16) -> Result<()> {
         if let Some(ref handle) = self.pty_handle {
             pty::resize_pty(&handle.pair, rows, cols)?;
-            let parser = self.parser.clone();
-            let rt = tokio::runtime::Handle::current();
-            rt.block_on(async {
-                let mut p = parser.lock().await;
+            if let Ok(mut p) = self.parser.lock() {
                 p.set_size(rows, cols);
-            });
+            }
         }
         Ok(())
     }
