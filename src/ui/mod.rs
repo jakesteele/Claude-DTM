@@ -243,10 +243,10 @@ fn render_empty_state(buf: &mut Buffer, area: Rect) {
             Span::styled("            │", bdr),
         ]),
         Line::from(vec![
-            Span::styled("│      Press ", bdr),
+            Span::styled("│     Press ", bdr),
             Span::styled("n", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
             Span::styled(" to create a new session", Style::default().fg(Color::DarkGray)),
-            Span::styled("     │", bdr),
+            Span::styled("    │", bdr),
         ]),
         Line::from(Span::styled("│                                        │", bdr)),
         Line::from(Span::styled("└────────────────────────────────────────┘", bdr)),
